@@ -1788,6 +1788,12 @@ env_set_lock_timeout_callback(DB_ENV *env, lock_timeout_callback callback) {
     return 0;
 }
 
+static int
+env_set_lock_wait_callback(DB_ENV *env, lock_wait_callback callback) {
+    env->i->lock_wait_needed_callback = callback;
+    return 0;
+}
+
 static void
 format_time(const time_t *timer, char *buf) {
     ctime_r(timer, buf);
@@ -2615,6 +2621,10 @@ static void env_do_backtrace(DB_ENV *env) {
     }
 }
 
+static void env_kill_waiter(DB_ENV *env, void *client_extra) {
+    env->i->ltm.kill_waiter(client_extra);
+}
+
 static int 
 toku_env_create(DB_ENV ** envp, uint32_t flags) {
     int r = ENOSYS;
@@ -2684,6 +2694,7 @@ toku_env_create(DB_ENV ** envp, uint32_t flags) {
     USENV(get_lock_timeout);
     USENV(set_lock_timeout);
     USENV(set_lock_timeout_callback);
+    USENV(set_lock_wait_callback);
     USENV(set_redzone);
     USENV(log_flush);
     USENV(log_archive);
@@ -2700,6 +2711,7 @@ toku_env_create(DB_ENV ** envp, uint32_t flags) {
     USENV(do_backtrace);
     USENV(set_check_thp);
     USENV(get_check_thp);
+    USENV(kill_waiter);
 #undef USENV
     
     // unlocked methods
