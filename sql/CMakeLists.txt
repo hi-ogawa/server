@@ -156,7 +156,7 @@ IF (CMAKE_SYSTEM_NAME MATCHES "Linux" OR
  IF(WIN32)
    SET(SQL_SOURCE ${SQL_SOURCE} threadpool_win.cc)
  ENDIF()
- SET(SQL_SOURCE ${SQL_SOURCE} threadpool_unix.cc)
+ SET(SQL_SOURCE ${SQL_SOURCE} threadpool_generic.cc)
 
 ENDIF()
 

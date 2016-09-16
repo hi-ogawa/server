@@ -122,6 +122,7 @@ static void thread_attach(THD* thd)
 */
 static TP_PRIORITY get_priority(TP_connection *c)
 {
+  DBUG_ASSERT(c->thd == current_thd);
   TP_PRIORITY prio= (TP_PRIORITY)c->thd->variables.threadpool_priority;
   if (prio == TP_PRIORITY_AUTO)
   {
@@ -136,7 +137,10 @@ static TP_PRIORITY get_priority(TP_connection *c)
 void tp_callback(TP_connection *c)
 {
   DBUG_ASSERT(c);
-  
+
+  Worker_thread_context worker_context;
+  worker_context.save();
+
   THD *thd= c->thd;
 
   c->state = TP_STATE_RUNNING;
@@ -168,6 +172,7 @@ void tp_callback(TP_connection *c)
   if (c->start_io())
     goto error;
 
+  worker_context.restore();
   return;
 
 error:
@@ -178,6 +183,7 @@ error:
   {
     threadpool_remove_connection(thd);
   }
+  worker_context.restore();
 }
 
 
@@ -186,8 +192,6 @@ static THD* threadpool_add_connection(CONNECT *connect, void *scheduler_data)
   THD *thd= NULL;
   int error=1;
 
-  Worker_thread_context worker_context;
-  worker_context.save();
 
   /*
     Create a new connection context: mysys_thread_var and PSI thread
@@ -212,7 +216,6 @@ static THD* threadpool_add_connection(CONNECT *connect, void *scheduler_data)
 #endif
       my_thread_end();
     }
-    worker_context.restore();
     return NULL;
   }
   delete connect;
@@ -260,15 +263,12 @@ static THD* threadpool_add_connection(CONNECT *connect, void *scheduler_data)
     threadpool_remove_connection(thd);
     thd= NULL;
   }
-  worker_context.restore();
   return thd;
 }
 
 
 static void threadpool_remove_connection(THD *thd)
 {
-  Worker_thread_context worker_context;
-  worker_context.save();
   thread_attach(thd);
   thd->event_scheduler.data= 0;
   thd->net.reading_or_writing = 0;
@@ -282,8 +282,6 @@ static void threadpool_remove_connection(THD *thd)
     mysys thread_var and PSI thread.
   */
   my_thread_end();
-
-  worker_context.restore();
 }
 
 /**
@@ -292,9 +290,6 @@ static void threadpool_remove_connection(THD *thd)
 static int threadpool_process_request(THD *thd)
 {
   int retval= 0;
-  Worker_thread_context  worker_context;
-  worker_context.save();
-
   thread_attach(thd);
 
   if (thd->killed >= KILL_CONNECTION)
@@ -344,7 +339,6 @@ static int threadpool_process_request(THD *thd)
   }
 
 end:
-  worker_context.restore();
   return retval;
 }
 
@@ -371,9 +365,9 @@ static bool tp_init()
   if (threadpool_mode == TP_MODE_WINDOWS)
     pool= new (std::nothrow) TP_pool_win;
   else
-    pool= new (std::nothrow) TP_pool_unix;
+    pool= new (std::nothrow) TP_pool_generic;
 #else
-  pool= new (std::nothrow) TP_pool_unix;
+  pool= new (std::nothrow) TP_pool_generic;
 #endif
   if (!pool)
     return true;

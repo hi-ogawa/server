@@ -132,10 +132,10 @@ typedef I_P_List<worker_thread_t, I_P_List_adapter<worker_thread_t,
                  >
 worker_list_t;
 
-struct TP_connection_unix:public TP_connection
+struct TP_connection_generic:public TP_connection
 {
-  TP_connection_unix(CONNECT *c);
-  ~TP_connection_unix();
+  TP_connection_generic(CONNECT *c);
+  ~TP_connection_generic();
  
   virtual int init(){ return 0; };
   virtual void set_io_timeout(int sec);
@@ -144,8 +144,8 @@ struct TP_connection_unix:public TP_connection
   virtual void wait_end();
 
   thread_group_t *thread_group;
-  TP_connection_unix *next_in_queue;
-  TP_connection_unix **prev_in_queue;
+  TP_connection_generic *next_in_queue;
+  TP_connection_generic **prev_in_queue;
   ulonglong abs_wait_timeout;
   ulonglong dequeue_time;
   bool bound_to_poll_descriptor;
@@ -155,14 +155,14 @@ struct TP_connection_unix:public TP_connection
 #endif
 };
 
-typedef TP_connection_unix TP_connection_unix;
+typedef TP_connection_generic TP_connection_generic;
 
-typedef I_P_List<TP_connection_unix,
-                     I_P_List_adapter<TP_connection_unix,
-                                      &TP_connection_unix::next_in_queue,
-                                      &TP_connection_unix::prev_in_queue>,
+typedef I_P_List<TP_connection_generic,
+                     I_P_List_adapter<TP_connection_generic,
+                                      &TP_connection_generic::next_in_queue,
+                                      &TP_connection_generic::prev_in_queue>,
                      I_P_List_null_counter,
-                     I_P_List_fast_push_back<TP_connection_unix> >
+                     I_P_List_fast_push_back<TP_connection_generic> >
 connection_queue_t;
 
 const int NQUEUES=2; /* We have high and low priority queues*/
@@ -184,8 +184,8 @@ struct thread_group_t
   ulonglong last_thread_creation_time;
   int  shutdown_pipe[2];
   bool shutdown;
-  bool stalled;
-} MY_ALIGNED(512);
+  bool stalled; 
+} MY_ALIGNED(CPU_LEVEL1_DCACHE_LINESIZE);
 
 static thread_group_t *all_groups;
 static uint group_count;
@@ -211,7 +211,7 @@ struct pool_timer_t
 
 static pool_timer_t pool_timer;
 
-static void queue_put(thread_group_t *thread_group, TP_connection_unix *connection);
+static void queue_put(thread_group_t *thread_group, TP_connection_generic *connection);
 static void queue_put(thread_group_t *thread_group, native_event *ev, int cnt);
 static int  wake_thread(thread_group_t *thread_group);
 static int  wake_or_create_thread(thread_group_t *thread_group);
@@ -228,12 +228,12 @@ static void print_pool_blocked_message(bool);
  This maps to different APIs on different Unixes.
  
  Supported are currently Linux with epoll, Solaris with event ports,
- OSX and BSD with kevent. All those API's are used with one-shot flags
+ OSX and BSD with kevent, Windows with IOCP. All those API's are used with one-shot flags
  (the event is signalled once client has written something into the socket, 
  then socket is removed from the "poll-set" until the  command is finished,
  and we need to re-arm/re-register socket)
  
- No implementation for poll/select/AIO is currently provided.
+ No implementation for poll/select is currently provided.
  
  The API closely resembles all of the above mentioned platform APIs 
  and consists of following functions. 
@@ -510,11 +510,11 @@ static void* native_event_get_userdata(native_event *event)
 
 /* Dequeue element from a workqueue */
 
-static TP_connection_unix *queue_get(thread_group_t *thread_group)
+static TP_connection_generic *queue_get(thread_group_t *thread_group)
 {
   DBUG_ENTER("queue_get");
   thread_group->queue_event_count++;
-  TP_connection_unix *c;
+  TP_connection_generic *c;
   for (int i=0; i < NQUEUES;i++)
   {
     c= thread_group->queues[i].pop_front();
@@ -548,7 +548,7 @@ static void queue_put(thread_group_t *thread_group, native_event *ev, int cnt)
   ulonglong now= pool_timer.current_microtime;
   for(int i=0; i < cnt; i++)
   {
-    TP_connection_unix *c = (TP_connection_unix *)native_event_get_userdata(&ev[i]);
+    TP_connection_generic *c = (TP_connection_generic *)native_event_get_userdata(&ev[i]);
     c->dequeue_time= now;
     thread_group->queues[c->priority].push_back(c);
   }
@@ -576,7 +576,7 @@ static void timeout_check(pool_timer_t *timer)
     if (thd->net.reading_or_writing != 1)
       continue;
  
-    TP_connection_unix *connection= (TP_connection_unix *)thd->event_scheduler.data;
+    TP_connection_generic *connection= (TP_connection_generic *)thd->event_scheduler.data;
     if (!connection)
     {
       /* 
@@ -673,7 +673,7 @@ void check_stall(thread_group_t *thread_group)
    Bump priority for the low priority connections that spent too much
    time in low prio queue.
   */
-  TP_connection_unix *c;
+  TP_connection_generic *c;
   for (;;)
   {
     c= thread_group->queues[TP_PRIORITY_LOW].front();
@@ -771,11 +771,11 @@ static void stop_timer(pool_timer_t *timer)
   
   @return a ready connection, or NULL on shutdown
 */
-static TP_connection_unix * listener(worker_thread_t *current_thread, 
+static TP_connection_generic * listener(worker_thread_t *current_thread, 
                                thread_group_t *thread_group)
 {
   DBUG_ENTER("listener");
-  TP_connection_unix *retval= NULL;
+  TP_connection_generic *retval= NULL;
 
   for(;;)
   {
@@ -1154,7 +1154,7 @@ static void thread_group_close(thread_group_t *thread_group)
 
 */
 
-static void queue_put(thread_group_t *thread_group, TP_connection_unix *connection)
+static void queue_put(thread_group_t *thread_group, TP_connection_generic *connection)
 {
   DBUG_ENTER("queue_put");
 
@@ -1198,11 +1198,11 @@ static bool too_many_threads(thread_group_t *thread_group)
   NULL is returned if timeout has expired,or on shutdown.
 */
 
-TP_connection_unix *get_event(worker_thread_t *current_thread, 
+TP_connection_generic *get_event(worker_thread_t *current_thread, 
   thread_group_t *thread_group,  struct timespec *abstime)
 { 
   DBUG_ENTER("get_event");
-  TP_connection_unix *connection = NULL;
+  TP_connection_generic *connection = NULL;
 
 
   mysql_mutex_lock(&thread_group->mutex);
@@ -1347,20 +1347,20 @@ void wait_end(thread_group_t *thread_group)
 
 
 
-TP_connection * TP_pool_unix::new_connection(CONNECT *c)
+TP_connection * TP_pool_generic::new_connection(CONNECT *c)
 {
-  return new (std::nothrow) TP_connection_unix(c);
+  return new (std::nothrow) TP_connection_generic(c);
 }
 
 /**
   Add a new connection to thread pool..
 */
 
-void TP_pool_unix::add(TP_connection *c)
+void TP_pool_generic::add(TP_connection *c)
 {
   DBUG_ENTER("tp_add_connection");
 
-  TP_connection_unix *connection=(TP_connection_unix *)c;
+  TP_connection_generic *connection=(TP_connection_generic *)c;
   thread_group_t *thread_group= connection->thread_group;
   /*
     Add connection to the work queue.Actual logon 
@@ -1378,7 +1378,7 @@ void TP_pool_unix::add(TP_connection *c)
   MySQL scheduler callback: wait begin
 */
 
-void TP_connection_unix::wait_begin(int type)
+void TP_connection_generic::wait_begin(int type)
 {
   DBUG_ENTER("wait_begin");
 
@@ -1394,7 +1394,7 @@ void TP_connection_unix::wait_begin(int type)
   MySQL scheduler callback: wait end
 */
 
-void TP_connection_unix::wait_end() 
+void TP_connection_generic::wait_end() 
 { 
   DBUG_ENTER("wait_end");
   DBUG_ASSERT(waiting);
@@ -1417,7 +1417,7 @@ static void set_next_timeout_check(ulonglong abstime)
   DBUG_VOID_RETURN;
 }
 
-TP_connection_unix::TP_connection_unix(CONNECT *c):
+TP_connection_generic::TP_connection_generic(CONNECT *c):
   TP_connection(c),
   thread_group(0),
   next_in_queue(0),
@@ -1440,7 +1440,7 @@ TP_connection_unix::TP_connection_unix(CONNECT *c):
   mysql_mutex_unlock(&group->mutex);
 }
 
-TP_connection_unix::~TP_connection_unix()
+TP_connection_generic::~TP_connection_generic()
 {
   mysql_mutex_lock(&thread_group->mutex);
   thread_group->connection_count--;
@@ -1451,7 +1451,7 @@ TP_connection_unix::~TP_connection_unix()
   Set wait timeout for connection. 
 */
 
-void TP_connection_unix::set_io_timeout(int timeout_sec)
+void TP_connection_generic::set_io_timeout(int timeout_sec)
 {
   DBUG_ENTER("set_wait_timeout");
   /* 
@@ -1478,7 +1478,7 @@ void TP_connection_unix::set_io_timeout(int timeout_sec)
   after thread_pool_size setting. 
 */
 
-static int change_group(TP_connection_unix *c, 
+static int change_group(TP_connection_generic *c, 
  thread_group_t *old_group,
  thread_group_t *new_group)
 { 
@@ -1509,7 +1509,7 @@ static int change_group(TP_connection_unix *c,
 }
 
 
-int TP_connection_unix::start_io()
+int TP_connection_generic::start_io()
 { 
   int fd= mysql_socket_getfd(thd->net.vio->mysql_socket);
 
@@ -1571,7 +1571,7 @@ static void *worker_main(void *param)
   /* Run event loop */
   for(;;)
   {
-    TP_connection_unix *connection;
+    TP_connection_generic *connection;
     struct timespec ts;
     set_timespec(ts,threadpool_idle_timeout);
     connection = get_event(&this_thread, thread_group, &ts);
@@ -1599,12 +1599,12 @@ static void *worker_main(void *param)
 }
 
 
-TP_pool_unix::TP_pool_unix()
+TP_pool_generic::TP_pool_generic()
 {}
 
-int TP_pool_unix::init()
+int TP_pool_generic::init()
 {
-  DBUG_ENTER("TP_pool_unix::TP_pool_unix");
+  DBUG_ENTER("TP_pool_generic::TP_pool_generic");
   threadpool_max_size= MY_MAX(threadpool_size, 128);
   all_groups= (thread_group_t *)
     my_malloc(sizeof(thread_group_t) * threadpool_max_size, MYF(MY_WME|MY_ZEROFILL));
@@ -1636,7 +1636,7 @@ int TP_pool_unix::init()
   DBUG_RETURN(0);
 }
 
-TP_pool_unix::~TP_pool_unix()
+TP_pool_generic::~TP_pool_generic()
 {
   DBUG_ENTER("tp_end");
   
@@ -1655,7 +1655,7 @@ TP_pool_unix::~TP_pool_unix()
 
 
 /** Ensure that poll descriptors are created when threadpool_size changes */
-int TP_pool_unix::set_pool_size(uint size)
+int TP_pool_generic::set_pool_size(uint size)
 {
   bool success= true;
  
@@ -1684,7 +1684,7 @@ int TP_pool_unix::set_pool_size(uint size)
   return 0;
 }
 
-int TP_pool_unix::set_stall_limit(uint limit)
+int TP_pool_generic::set_stall_limit(uint limit)
 {
   mysql_mutex_lock(&(pool_timer.mutex));
   pool_timer.tick_interval= limit;
@@ -1701,7 +1701,7 @@ int TP_pool_unix::set_stall_limit(uint limit)
  Don't do any locking, it is not required for stats.
 */
 
-int TP_pool_unix::get_idle_thread_count()
+int TP_pool_generic::get_idle_thread_count()
 {
   int sum=0;
   for (uint i= 0; i < threadpool_max_size && all_groups[i].pollfd >= 0; i++)

@@ -145,10 +145,10 @@ struct TP_pool_win:TP_pool
 };
 #endif
 
-struct TP_pool_unix :TP_pool
+struct TP_pool_generic :TP_pool
 {
-  TP_pool_unix();
-  ~TP_pool_unix();
+  TP_pool_generic();
+  ~TP_pool_generic();
   virtual int init();
   virtual TP_connection *new_connection(CONNECT *c);
   virtual void add(TP_connection *);
