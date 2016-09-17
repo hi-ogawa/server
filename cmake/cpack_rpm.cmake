@@ -145,18 +145,6 @@ SETA(CPACK_RPM_server_PACKAGE_PROVIDES
   "msqlormysql"
   "mysql-server")
 
-SETA(CPACK_RPM_compat_PACKAGE_OBSOLETES
-  "mysql-shared"
-  "MySQL-shared-standard"
-  "MySQL-shared-pro"
-  "MySQL-shared-pro-cert"
-  "MySQL-shared-pro-gpl"
-  "MySQL-shared-pro-gpl-cert"
-  "MySQL-shared")
-SETA(CPACK_RPM_compat_PACKAGE_PROVIDES
-  "MySQL-shared"
-  "mysql-shared")
-
 SETA(CPACK_RPM_test_PACKAGE_OBSOLETES
   "MySQL-test")
 SETA(CPACK_RPM_test_PACKAGE_PROVIDES
@@ -200,11 +188,8 @@ ALTERNATIVE_NAME("test"   "mysql-test")
 # Argh! Different distributions call packages differently, to be a drop-in
 # replacement we have to fake distribution-speficic dependencies
 
-IF(RPM MATCHES "(rhel|centos)5")
-  ALTERNATIVE_NAME("shared" "mysql")
-ELSEIF(RPM MATCHES "(rhel|centos)6")
+IF(RPM MATCHES "(rhel|centos)6")
   ALTERNATIVE_NAME("client" "mysql")
-  ALTERNATIVE_NAME("shared" "mysql-libs")
 ELSEIF(RPM MATCHES "fedora" OR RPM MATCHES "(rhel|centos)7")
   SET(epoch 1) # this is fedora
   ALTERNATIVE_NAME("client" "mariadb")
@@ -213,7 +198,6 @@ ELSEIF(RPM MATCHES "fedora" OR RPM MATCHES "(rhel|centos)7")
   ALTERNATIVE_NAME("server" "mariadb-server")
   ALTERNATIVE_NAME("server" "mysql-compat-server")
   ALTERNATIVE_NAME("shared" "mariadb-libs")
-  ALTERNATIVE_NAME("shared" "mysql-libs")
   ALTERNATIVE_NAME("test"   "mariadb-test")
   SET(CPACK_RPM_common_PACKAGE_CONFLICTS "mariadb-libs < 1:%{version}-%{release}") 
 ENDIF()
