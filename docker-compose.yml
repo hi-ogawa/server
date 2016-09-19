@@ -1,0 +1,86 @@
+version: "2"
+
+services:
+  dev:
+    build: .
+    command: sleep inf
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - dev_v:/usr/local/mysql
+    security_opt:
+      # this is for allowing gdb
+      # http://stackoverflow.com/questions/35860527/warning-error-disabling-address-space-randomization-operation-not-permitted#comment62818827_35860527
+      - seccomp=unconfined
+
+volumes:
+  dev_v:
+
+# Example:
+# $ docker-compose up -d
+# $ docker-compose exec dev bash
+# $# cmake . -DBUILD_CONFIG=mysql_release
+# $# make
+# $# make install
+# $# cd /usr/local/mysql
+# $# scripts/mysql_install_db --user=mysql --basedir=.
+# $# support-files/mysql.server start
+# $# ps -ejH
+#    PID  PGID   SID TTY          TIME CMD
+#   1553  1547     7 ?        00:00:00 mysqld_safe
+#   1626  1547     7 ?        00:00:00   mysqld
+#      7     7     7 ?        00:00:00 bash
+#   1656  1656     7 ?        00:00:00   ps
+#      1     1     1 ?        00:00:00 sleep
+# $# bin/mysql
+#  MariaDB [(none)]> show databases;
+#    +--------------------+
+#    | Database           |
+#    +--------------------+
+#    | information_schema |
+#    | mysql              |
+#    | performance_schema |
+#    | test               |
+#    +--------------------+
+#    4 rows in set (0.00 sec)
+#
+#  MariaDB [(none)]> use mysql;
+#    Reading table information for completion of table and column names
+#    You can turn off this feature to get a quicker startup with -A
+#
+#    Database changed
+#  MariaDB [mysql]> quit;
+#    Bye
+#  $# exit
+#  $ docker-compose down
+
+# Testing:
+# $# cd /usr/local/mysql/mysql-test
+# $# ./mysql-test-run ./t/1st.test <-- try simplest test
+#    Logging: ./mysql-test-run  ./t/1st.test
+#    vardir: /usr/local/mysql/mysql-test/var
+#    Removing old var directory...
+#    Creating var directory '/usr/local/mysql/mysql-test/var'...
+#    Checking supported features...
+#    MariaDB Version 10.1.18-MariaDB
+#     - SSL connections supported
+#    Collecting tests...
+#    Installing system database...
+#
+#    ==============================================================================
+#
+#    TEST                                      RESULT   TIME (ms) or COMMENT
+#    --------------------------------------------------------------------------
+#
+#    worker[1] Using MTR_BUILD_THREAD 300, with reserved ports 16000..16019
+#    worker[1] mysql-test-run: WARNING: running this script as _root_ will cause some tests to be skipped
+#    main.1st                                 [ pass ]      1
+#    --------------------------------------------------------------------------
+#    The servers were restarted 0 times
+#    Spent 0.001 of 4 seconds executing testcases
+#
+#    Completed: All 1 tests were successful.
+
+# Reference:
+# - https://mariadb.com/kb/en/mariadb/Build_Environment_Setup_for_Linux/
+# - https://mariadb.com/kb/en/mariadb/generic-build-instructions/
